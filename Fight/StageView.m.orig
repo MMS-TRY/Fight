@@ -1,0 +1,310 @@
+//
+//  StageView.m
+//  Fight
+//
+//  Created by Takashi MORIZANE on 2013/05/24.
+//  Copyright (c) 2013年 PAVCMMS. All rights reserved.
+//
+
+#import "StageView.h"
+#import <QuartzCore/QuartzCore.h>
+#import "FieldCell.h"
+#import "Character.h"
+#import "EffectLayer.h"
+#import "FloatStatusView.h"
+
+@interface StageView() <EffectLayerDelegate>
+@property (nonatomic, strong) NSMutableArray *cells;
+@property (nonatomic, weak) Character *activeCharacter;
+@property (nonatomic, assign) CGPoint originPoint;
+@property (nonatomic, strong) UIImageView *floatView;
+@property (nonatomic, strong) FloatStatusView *damageView;
+@end
+
+@implementation StageView
+
+- (id)initWithCoder:(NSCoder *)aDecoder
+{
+  self = [super initWithCoder:aDecoder];
+  if(self) {
+    int i;
+    _cells = [NSMutableArray array];
+    for (i=0; i< kCellRows * kCellCols; i++) {
+      [_cells addObject:[[FieldCell alloc] initWithId:i]];
+    }
+    [self addObserver:self forKeyPath:@"effectLayer" options:NSKeyValueObservingOptionNew context:NULL];
+  }
+  return self;
+}
+
+- (id)initWithFrame:(CGRect)frame
+{
+    self = [super initWithFrame:frame];
+    if (self) {
+        // Initialization code
+      int i;
+      _cells = [NSMutableArray array];
+      for (i=0; i< kCellRows * kCellCols; i++) {
+        [_cells addObject:[[FieldCell alloc] initWithId:i]];
+      }
+      [self addObserver:self forKeyPath:@"effectLayer" options:NSKeyValueObservingOptionNew context:NULL];
+    }
+    return self;
+}
+
+- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context
+{
+  if([keyPath isEqualToString:@"effectLayer"]) {
+    id layer = [change objectForKey:NSKeyValueChangeNewKey];
+    if(layer) {
+      self.effectLayer.delegate = self;
+    } else {
+      self.effectLayer.delegate = nil;
+    }
+  }
+}
+
+- (void)didFinishEffectAnimation
+{
+}
+
+- (BOOL)setCharacter:(Character *)character X:(NSInteger)x Y:(NSInteger)y
+{
+
+  character.pos = CGPointMake(x, y);
+  NSLog(@"%@", NSStringFromCGPoint(character.pos));
+  return YES;
+}
+
+- (Character *)charaAtX:(float)x Y:(float)y
+{
+  NSArray *charas = nil;
+  if ([self.delegate respondsToSelector:@selector(allCharas)]) {
+    charas = [self.delegate allCharas];
+  }
+
+  if (charas) {
+    for (Character *c in charas) {
+      if (CGRectContainsPoint(CGRectMake(c.pos.x - kCellPerSize/2, c.pos.y - kCellPerSize/2, kCellPerSize-2, kCellPerSize-2),
+                              CGPointMake(x, y))) {
+        return c;
+      }
+    }
+  }
+  return nil;
+}
+
+- (void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event
+{
+  UITouch *tch = [touches anyObject];
+  CGPoint pos = [tch locationInView:self];
+  
+  if(self.activeCharacter) {
+    return;
+  }
+
+  self.originPoint = CGPointMake(pos.x, pos.y);
+  
+  Character *chara = [self charaAtX:pos.x Y:pos.y];
+  if (chara) {
+    self.activeCharacter = chara;
+    [self.activeCharacter.movingTrace addObject:[NSValue valueWithCGPoint:CGPointMake(chara.pos.x, chara.pos.y)]];
+    self.floatView = [[UIImageView alloc] initWithImage:self.activeCharacter.image];
+    self.floatView.frame = CGRectMake(0,0,kCellPerSize,kCellPerSize);
+    self.floatView.alpha = 0.6;
+    [self addSubview:self.floatView];
+    self.floatView.center = pos;
+    NSLog(@"%@",NSStringFromCGPoint(pos));
+    [self setNeedsDisplay];
+  }
+}
+
+- (void)touchesMoved:(NSSet *)touches withEvent:(UIEvent *)event
+{
+  for (UIView *v in [self subviews]) {
+    NSLog(@"  -> %@", v);
+  }
+  if(self.activeCharacter) {
+    UITouch *tch = [touches anyObject];
+    CGPoint pos = [tch locationInView:self];
+    dispatch_async(dispatch_get_main_queue(), ^{
+      self.activeCharacter.movingImage.center = pos;
+    });
+    NSLog(@" -> %@", NSStringFromCGPoint(pos));
+    [self.activeCharacter.movingTrace addObject:[NSValue valueWithCGPoint:CGPointMake(pos.x, pos.y)]];
+  }
+}
+
+- (void)moveAllCharacter
+{
+  NSArray *charas = nil;
+  if ([self.delegate respondsToSelector:@selector(allCharas)]) {
+    charas = [self.delegate allCharas];
+  }
+
+  for (Character *c in charas) {
+    if (c.setMoving == NO) {
+      return;
+    }
+  }
+  
+  for (Character *c in charas) {
+    __block __weak StageView *wSelf = self;
+    [c animationChar:^{
+      [wSelf setNeedsDisplay];
+    }];
+  }
+}
+
+- (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event
+{
+  if(self.activeCharacter) {
+    UITouch *tch = [touches anyObject];
+    CGPoint pos = [tch locationInView:self];
+    [self.activeCharacter.movingTrace addObject:[NSValue valueWithCGPoint:CGPointMake(pos.x, pos.y)]];
+    if ([self.activeCharacter canMoveChara]) {
+      self.activeCharacter.setMoving = YES;
+    }
+    else {
+      [self.activeCharacter.movingTrace removeAllObjects];
+      [self moveCharacter:self.activeCharacter X:self.activeCharacter.pos.x Y:self.activeCharacter.pos.y];
+    }
+    [self.movingArea removeFromSuperview];
+    self.movingArea = nil;
+  }
+  self.activeCharacter = nil;
+  [self moveAllCharacter];
+#if 0
+    if ([self.activeCharacter canMoveX:xPosWithXPoint(pos.x) Y:yPosWithYPoint(pos.y)]) {
+      if ([self resetCharacter:self.activeCharacter X:xPosWithXPoint(pos.x) Y:yPosWithYPoint(pos.y)]) {
+        [self setNeedsDisplay];
+        int direction = -1;
+        if(self.activeCharacter.group) {
+          direction = 1;
+        }
+        FieldCell *cell = [self cellAtX:xPosWithXPoint(pos.x) Y:yPosWithYPoint(pos.y) + direction];
+        if(cell.character && cell.character.group != self.activeCharacter.group) {
+          [self.effectLayer fireAtPos:CGPointMake(CGRectGetMidX(cell.rect), CGRectGetMidY(cell.rect)) duration:0.5];
+          [self displayAttackViewCell:cell];
+        }
+        [self removeFloatView];
+      }
+      else {
+        [self moveCharacter:self.floatView X:self.activeCharacter.pos.x Y:self.activeCharacter.pos.y];
+      }
+    }
+    else {
+      [self moveCharacter:self.floatView X:self.activeCharacter.pos.x Y:self.activeCharacter.pos.y];      
+    }
+#endif
+  }
+}
+
+- (void)displayAttackViewCell:(FieldCell *)dstCell
+{
+  if(self.damageView) {
+    [self.damageView removeFromSuperview];
+  }
+  self.damageView = [[FloatStatusView alloc] initWithFrame:CGRectMake(0, 0, 50, 6)];
+  self.damageView.center = CGPointMake(CGRectGetMidX(dstCell.rect), CGRectGetMidY(dstCell.rect));
+  [self.effectLayer addSubview:self.damageView];
+  self.damageView.maxHp = dstCell.character.maxHP;
+  self.damageView.hp = dstCell.character.HP;
+  CGFloat damage = self.activeCharacter.AP - dstCell.character.DP;
+  
+  [self.damageView damage:damage];
+  
+  double delayInSeconds = 1.5;
+  dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delayInSeconds * NSEC_PER_SEC));
+  dispatch_after(popTime, dispatch_get_main_queue(), ^(void){
+    [self.damageView removeFromSuperview];
+    self.damageView = nil;
+    dstCell.character.HP -= damage;
+    if(dstCell.character.HP < 1) {
+      dstCell.character.HP = 0;
+      if([self.delegate respondsToSelector:@selector(didStageViewEventAtCell:eventType:)]) {
+        [self.delegate didStageViewEventAtCell:dstCell eventType:kStageEventTypeBattle];
+      }
+      dstCell.character = nil;
+      [self setNeedsDisplay];
+    }
+  });
+}
+
+- (void)moveCharacter:(UIImageView *)imageView X:(NSInteger)x Y:(NSInteger)y
+{
+  __block __weak StageView *wSelf = self;
+  [UIView animateWithDuration:0.2 delay:0.0 options:UIViewAnimationOptionCurveLinear
+                   animations:^{
+                     FieldCell *cell = [self cellAtX:x Y:y];
+                     imageView.center = CGPointMake(CGRectGetMidX(cell.rect), CGRectGetMidY(cell.rect));
+                   }
+                   completion:^(BOOL finished){
+                     [wSelf setNeedsDisplay];
+                     [wSelf removeFloatView];
+                   }];
+}
+
+- (void)removeFloatView
+{
+    [self.floatView removeFromSuperview];
+    self.floatView = nil;
+}
+
+- (void)touchesCancelled:(NSSet *)touches withEvent:(UIEvent *)event
+{
+  [self setNeedsDisplay];
+  [self removeFloatView];
+}
+
+- (CGRect)cellRectWithX:(NSInteger)x Y:(NSInteger)y
+{
+  return CGRectMake(x * kCellPerSize +1, y * kCellPerSize +1, kCellPerSize-2, kCellPerSize-2);
+}
+
+- (FieldCell *)cellAtX:(NSInteger)x Y:(NSInteger)y
+{
+//  NSLog(@"%d, %d",x,y);
+  int pos = y * kCellRows + x;
+  if(pos > self.cells.count || pos < 0) {
+    return nil;
+  }
+  return [self.cells objectAtIndex:pos];
+}
+
+- (void)drawBox:(CGContextRef)ctx X:(NSInteger)x Y:(NSInteger)y
+{
+  if(x < 0 || y < 0 || x >= kCellRows || y >= kCellCols) {
+    return;
+  }
+  CGContextSetRGBFillColor (ctx, 1, 0, 0, 0.6);
+  CGContextFillRect (ctx, [self cellRectWithX:x Y:y]);
+}
+
+- (void)drawRect:(CGRect)rect
+{
+  // Drawing code
+  CGContextRef ctx = UIGraphicsGetCurrentContext();
+
+  NSArray *charas = nil;
+  if([self.delegate respondsToSelector:@selector(allCharas)]) {
+      charas = [self.delegate allCharas];
+  }
+  
+  if (charas) {
+    for (Character *c in charas) {
+      if (c.group) {
+        CGContextDrawImage(ctx, CGRectMake(c.pos.x - kCellPerSize/2, c.pos.y - kCellPerSize/2, kCellPerSize-2, kCellPerSize-2), [c.image CGImage]);
+      } else {
+        [c.image drawInRect:CGRectMake(c.pos.x - kCellPerSize/2, c.pos.y - kCellPerSize/2, kCellPerSize-2, kCellPerSize-2)];
+      }
+    }
+  }
+}
+
+- (void)dealloc
+{
+  [self removeObserver:self forKeyPath:@"effectLayer"];
+}
+
+@end

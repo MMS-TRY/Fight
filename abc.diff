@@ -1,0 +1,263 @@
+diff --git a/Fight/Character.h b/Fight/Character.h
+index e31fe4b..dedfb72 100644
+--- a/Fight/Character.h
++++ b/Fight/Character.h
+@@ -13,7 +13,9 @@
+ @interface Character : NSObject
+ @property (nonatomic, strong) UIImage *image;
+ @property (nonatomic, copy) NSString *name;
++@property (nonatomic, assign) NSInteger time;
+ @property (nonatomic, assign) NSInteger speed;
++@property (nonatomic, assign) NSInteger distance;
+ @property (nonatomic, assign) NSInteger maxHP;
+ @property (nonatomic, assign) NSInteger HP;
+ @property (nonatomic, assign) NSInteger AP;
+@@ -21,6 +23,7 @@
+ @property (nonatomic, assign) NSInteger group;
+ @property (nonatomic, assign) CGPoint pos;
+ @property (nonatomic, strong) NSMutableArray *movingTrace;
++@property (nonatomic,assign) BOOL setMoving;
+ @property (nonatomic, strong) UIImageView *movingImage;
+ @property (copy, nonatomic) void (^didFinishedAnimation)(void);
+ /* 
+@@ -31,6 +34,6 @@
+ @property (nonatomic, strong) NSArray *moveArea;
+ 
+ - (NSArray *)moveAreaAtMasterPoint:(CGPoint)pos;
+-- (BOOL)canMoveToX:(NSInteger)x Y:(NSInteger)y;
++- (BOOL)canMoveChara;
+ - (void)animationChar:(void(^)(void))block;
+ @end
+diff --git a/Fight/Character.m b/Fight/Character.m
+index 68d2c77..0c881f4 100644
+--- a/Fight/Character.m
++++ b/Fight/Character.m
+@@ -22,6 +22,9 @@
+     _HP = _maxHP;
+     _AP = random() %50 + 30;
+     _DP = random() %25 + 1;
++    _time = 3.0;
++    _speed = random() % 100 + 10;
++    _distance = _speed * _time;
+     _movingTrace = [NSMutableArray array];
+     _image = [UIImage imageNamed:[NSString stringWithFormat:@"images-%ld.png",random()%12]];
+     _movingImage = [[UIImageView alloc] initWithImage:_image];
+@@ -101,18 +104,39 @@
+   return ary;
+ }
+ 
+-- (BOOL)canMoveToX:(NSInteger)x Y:(NSInteger)y
++float calcDistance (CGPoint from, CGPoint to)
+ {
+-  NSArray *area = [self moveAreaAtMasterPoint:self.pos];
+-  for (NSValue *v in area) {
+-    CGPoint pos = [v CGPointValue];
+-    if (CGPointEqualToPoint(pos, CGPointMake(x, y))) {
+-      return YES;
++  NSLog (@"%@ -> %@", NSStringFromCGPoint(from), NSStringFromCGPoint(to));
++  float dx = from.x - to.x;
++  float dy = from.y - to.y;
++  return sqrt(dx*dx + dy*dy);
++}
++
++
++- (BOOL)canMoveChara
++{
++  float movingDistance = 0;
++  BOOL flag = NO;
++  CGPoint from, to;
++  for (NSValue *v in self.movingTrace) {
++    if (flag) {
++      from = to;
++    }
++    to = [v CGPointValue];
++    if (flag) {
++      movingDistance += calcDistance(from, to);
++    }
++    else {
++      flag = YES;
++    }
++    if (movingDistance > self.distance) {
++      return NO;
+     }
+   }
+-  return NO;
++  return YES;
+ }
+ 
++
+ - (void)animationChar:(void(^)(void))block
+ {
+   // CAKeyframeAnimationオブジェクトを生成
+@@ -120,7 +144,7 @@
+   animation = [CAKeyframeAnimation animationWithKeyPath:@"position"];
+   animation.fillMode = kCAFillModeForwards;
+   animation.removedOnCompletion = NO;
+-  animation.duration = 1.0;
++  animation.duration = self.time;
+   animation.delegate = self;
+   self.didFinishedAnimation = block;
+   
+@@ -157,6 +181,7 @@
+   [self.movingImage removeFromSuperview];
+   self.didFinishedAnimation();
+   self.didFinishedAnimation = nil;
++  self.setMoving = NO;
+ }
+ 
+ @end
+diff --git a/Fight/StageView.m b/Fight/StageView.m
+index 67113a5..53f5a84 100644
+--- a/Fight/StageView.m
++++ b/Fight/StageView.m
+@@ -16,9 +16,8 @@
+ @interface StageView() <EffectLayerDelegate>
+ @property (nonatomic, strong) NSMutableArray *cells;
+ @property (nonatomic, weak) Character *activeCharacter;
+-@property (nonatomic, assign) CGPoint originPoint;
+-@property (nonatomic, strong) UIImageView *floatView;
+ @property (nonatomic, strong) FloatStatusView *damageView;
++@property (nonatomic, strong) UIView *movingArea;
+ @end
+ 
+ @implementation StageView
+@@ -103,18 +102,26 @@
+     return;
+   }
+ 
+-  self.originPoint = CGPointMake(pos.x, pos.y);
+-  
+   Character *chara = [self charaAtX:pos.x Y:pos.y];
+   if (chara) {
+     self.activeCharacter = chara;
++    if (self.activeCharacter.setMoving) {
++      [self.activeCharacter.movingTrace removeAllObjects];
++      self.activeCharacter.setMoving = NO;
++    }
+     [self.activeCharacter.movingTrace addObject:[NSValue valueWithCGPoint:CGPointMake(chara.pos.x, chara.pos.y)]];
+-    self.floatView = [[UIImageView alloc] initWithImage:self.activeCharacter.image];
+-    self.floatView.frame = CGRectMake(0,0,kCellPerSize,kCellPerSize);
+-    self.floatView.alpha = 0.6;
+-    [self addSubview:self.floatView];
+-    self.floatView.center = pos;
+-    NSLog(@"%@",NSStringFromCGPoint(pos));
++    self.activeCharacter.movingImage.alpha = 0.6;
++    [self addSubview:self.activeCharacter.movingImage];
++    self.activeCharacter.movingImage.center = pos;
++
++    self.movingArea = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.activeCharacter.distance * 2, self.activeCharacter.distance * 2)];
++    self.movingArea.center = CGPointMake(self.activeCharacter.pos.x, self.activeCharacter.pos.y);
++    self.movingArea.layer.cornerRadius = (self.activeCharacter.distance * 2) / 2.0;
++    self.movingArea.clipsToBounds = YES;
++    self.movingArea.backgroundColor = [UIColor redColor];
++    self.movingArea.alpha = 0.1f;
++    [self addSubview:self.movingArea];
++
+     [self setNeedsDisplay];
+   }
+ }
+@@ -124,26 +131,52 @@
+   if(self.activeCharacter) {
+     UITouch *tch = [touches anyObject];
+     CGPoint pos = [tch locationInView:self];
+-    self.floatView.center = pos;
++    self.activeCharacter.movingImage.center = pos;
++    NSLog(@" -> %@", NSStringFromCGPoint(pos));
+     [self.activeCharacter.movingTrace addObject:[NSValue valueWithCGPoint:CGPointMake(pos.x, pos.y)]];
+   }
+ }
+ 
++- (void)moveAllCharacter
++{
++  NSArray *charas = nil;
++  if ([self.delegate respondsToSelector:@selector(allCharas)]) {
++    charas = [self.delegate allCharas];
++  }
++
++  for (Character *c in charas) {
++    if (c.setMoving == NO) {
++      return;
++    }
++  }
++  
++  for (Character *c in charas) {
++    [self addSubview:c.movingImage];
++    __block __weak StageView *wSelf = self;
++    [c animationChar:^{
++      [wSelf setNeedsDisplay];
++    }];
++  }
++}
++
+ - (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event
+ {
+   if(self.activeCharacter) {
+     UITouch *tch = [touches anyObject];
+     CGPoint pos = [tch locationInView:self];
+-    self.originPoint = CGPointMake(pos.x, pos.y);
+-    if (self.activeCharacter) {
+-      [self addSubview:self.activeCharacter.movingImage];
+-      __block __weak StageView *wSelf = self;
+-      [self.activeCharacter animationChar:^{
+-        [wSelf setNeedsDisplay];
+-        [wSelf removeFloatView];
+-      }];
+-      self.activeCharacter = nil;
++    [self.activeCharacter.movingTrace addObject:[NSValue valueWithCGPoint:CGPointMake(pos.x, pos.y)]];
++    if ([self.activeCharacter canMoveChara]) {
++      self.activeCharacter.setMoving = YES;
++    }
++    else {
++      [self.activeCharacter.movingTrace removeAllObjects];
++      [self moveCharacter:self.activeCharacter X:self.activeCharacter.pos.x Y:self.activeCharacter.pos.y];
+     }
++    [self.movingArea removeFromSuperview];
++    self.movingArea = nil;
++  }
++  self.activeCharacter = nil;
++  [self moveAllCharacter];
+ #if 0
+     if ([self.activeCharacter canMoveX:xPosWithXPoint(pos.x) Y:yPosWithYPoint(pos.y)]) {
+       if ([self resetCharacter:self.activeCharacter X:xPosWithXPoint(pos.x) Y:yPosWithYPoint(pos.y)]) {
+@@ -167,7 +200,6 @@
+       [self moveCharacter:self.floatView X:self.activeCharacter.pos.x Y:self.activeCharacter.pos.y];      
+     }
+ #endif
+-  }
+ }
+ 
+ - (void)displayAttackViewCell:(FieldCell *)dstCell
+@@ -201,30 +233,22 @@
+   });
+ }
+ 
+-- (void)moveCharacter:(UIImageView *)imageView X:(NSInteger)x Y:(NSInteger)y
++- (void)moveCharacter:(Character *)chara X:(float)x Y:(float)y
+ {
+   __block __weak StageView *wSelf = self;
+   [UIView animateWithDuration:0.2 delay:0.0 options:UIViewAnimationOptionCurveLinear
+                    animations:^{
+-                     FieldCell *cell = [self cellAtX:x Y:y];
+-                     imageView.center = CGPointMake(CGRectGetMidX(cell.rect), CGRectGetMidY(cell.rect));
++                     chara.movingImage.center = CGPointMake(x, y);
+                    }
+                    completion:^(BOOL finished){
+                      [wSelf setNeedsDisplay];
+-                     [wSelf removeFloatView];
++                     [chara.movingImage removeFromSuperview];
+                    }];
+ }
+ 
+-- (void)removeFloatView
+-{
+-    [self.floatView removeFromSuperview];
+-    self.floatView = nil;
+-}
+-
+ - (void)touchesCancelled:(NSSet *)touches withEvent:(UIEvent *)event
+ {
+   [self setNeedsDisplay];
+-  [self removeFloatView];
+ }
+ 
+ - (CGRect)cellRectWithX:(NSInteger)x Y:(NSInteger)y

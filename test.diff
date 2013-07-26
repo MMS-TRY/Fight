@@ -1,0 +1,360 @@
+diff --git a/Fight/Character.h b/Fight/Character.h
+index 2b2d033..27fc2ce 100644
+--- a/Fight/Character.h
++++ b/Fight/Character.h
+@@ -18,6 +18,7 @@
+ @property (nonatomic, assign) NSInteger DP;
+ @property (nonatomic, assign) NSInteger group;
+ @property (nonatomic, assign) CGPoint pos;
++@property (nonatomic, strong) NSMutableArray *movingTrace;
+ /* 
+    7 0 1    各方角に対して、移動距離を持つ
+    6 X 2
+diff --git a/Fight/FieldCell.h b/Fight/FieldCell.h
+index 19cf342..bcfcff4 100644
+--- a/Fight/FieldCell.h
++++ b/Fight/FieldCell.h
+@@ -25,4 +25,8 @@ typedef enum {
+ @property (nonatomic, strong) Character *character;
+ 
+ - (id)initWithId:(int)id;
+++ (float)xPositionFromCellX:(int)x;
+++ (float)yPositionFromCellY:(int)y;
+++ (CGPoint)pointFromCellX:(int)x Y:(int)y;
++
+ @end
+diff --git a/Fight/FieldCell.m b/Fight/FieldCell.m
+index 8cdb723..4a6addb 100644
+--- a/Fight/FieldCell.m
++++ b/Fight/FieldCell.m
+@@ -28,4 +28,19 @@
+   return self;
+ }
+ 
+++ (float)xPositionFromCellX:(int)x
++{
++  return x * kCellPerSize;
++}
++
+++ (float)yPositionFromCellY:(int)y
++{
++  return y * kCellPerSize;
++}
++
+++ (CGPoint)pointFromCellX:(int)x Y:(int)y
++{
++  return CGPointMake(x * kCellPerSize, y * kCellPerSize);
++}
++
+ @end
+diff --git a/Fight/StageView.h b/Fight/StageView.h
+index 1c6fd30..0d4c11c 100644
+--- a/Fight/StageView.h
++++ b/Fight/StageView.h
+@@ -19,6 +19,7 @@ typedef enum {
+ @protocol StageViewDelegate <NSObject>
+ @optional
+ - (void)didStageViewEventAtCell:(FieldCell *)cell eventType:(kStageEventType)type;
++- (NSArray *)allCharas;
+ @end
+ 
+ 
+@@ -26,7 +27,11 @@ typedef enum {
+ @property (nonatomic, weak) id <StageViewDelegate> delegate;
+ @property (nonatomic, weak) EffectLayer *effectLayer;
+ - (FieldCell *)cellAtX:(NSInteger)x Y:(NSInteger)y;
++#if 0
+ - (Character *)characterWithX:(NSInteger)x Y:(NSInteger)y;
++#endif
+ - (BOOL)setCharacter:(Character *)character X:(NSInteger)x Y:(NSInteger)y;
++#if 0
+ - (void)clearAllCell;
++#endif
+ @end
+diff --git a/Fight/StageView.m b/Fight/StageView.m
+index ae5a011..c4927a8 100644
+--- a/Fight/StageView.m
++++ b/Fight/StageView.m
+@@ -68,24 +68,31 @@
+ {
+ }
+ 
++#if 0
+ - (Character *)characterWithX:(NSInteger)x Y:(NSInteger)y
+ {
+   FieldCell *cell = [self cellAtX:x Y:y];
+   return cell.character;
+ }
++#endif
+ 
+ - (BOOL)setCharacter:(Character *)character X:(NSInteger)x Y:(NSInteger)y
+ {
++#if 0
+   FieldCell *cell = [self cellAtX:x Y:y];
+   if(cell.character) {
+     return NO;
+   }
++#endif
+ 
+   character.pos = CGPointMake(x, y);
++#if 0
+   cell.character = character;
++#endif
+   return YES;
+ }
+ 
++#if 0
+ - (BOOL)removeCharacter:(Character *)character
+ {
+     FieldCell *cell = [self cellAtX:character.pos.x Y:character.pos.y];
+@@ -95,7 +102,9 @@
+     }
+     return NO;
+ }
++#endif
+ 
++#if 0
+ - (BOOL)resetCharacter:(Character *)character X:(NSInteger)x Y:(NSInteger)y
+ {
+   FieldCell *cell = [self cellAtX:x Y:y];
+@@ -106,7 +115,27 @@
+   [self setCharacter:character X:x Y:y];
+   return YES;
+ }
++#endif
+ 
++- (Character *)charaAtX:(float)x Y:(float)y
++{
++  NSArray *charas = nil;
++  if ([self.delegate respondsToSelector:@selector(allCharas)]) {
++    charas = [self.delegate allCharas];
++  }
++
++  if (charas) {
++    for (Character *c in charas) {
++      if (CGRectContainsPoint(CGRectMake(c.pos.x, c.pos.y, kCellPerSize-2, kCellPerSize-2),
++                              CGPointMake(x, y))) {
++        return c;
++      }
++    }
++  }
++  return nil;
++}
++
++#if 0
+ NSInteger xPosWithXPoint(CGFloat xPoint)
+ {
+   return xPoint/kCellPerSize;
+@@ -116,6 +145,7 @@ NSInteger yPosWithYPoint(CGFloat yPoint)
+ {
+   return yPoint/kCellPerSize;
+ }
++#endif
+ 
+ - (void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event
+ {
+@@ -125,8 +155,27 @@ NSInteger yPosWithYPoint(CGFloat yPoint)
+   if(self.activeCharacter) {
+     return;
+   }
+-  
++
++#if 0
+   self.originPoint = CGPointMake(xPosWithXPoint(pos.x), yPosWithYPoint(pos.y));
++#else
++  self.originPoint = CGPointMake(pos.x, pos.y);
++#endif
++  
++  Character *chara = [self charaAtX:pos.x Y:pos.y];
++  if (chara) {
++    self.activeCharacter = chara;
++    self.activeCharacter.movingTrace = [NSMutableArray array];
++    [self.activeCharacter.movingTrace addObject:[NSValue valueWithCGPoint:CGPointMake(chara.pos.x, chara.pos.y)]];
++    self.floatView = [[UIImageView alloc] initWithImage:self.activeCharacter.image];
++    self.floatView.frame = CGRectMake(0,0,kCellPerSize,kCellPerSize);
++    self.floatView.alpha = 0.6;
++    [self addSubview:self.floatView];
++    self.floatView.center = pos;
++    NSLog(@"%@",NSStringFromCGPoint(pos));
++    [self setNeedsDisplay];    
++  }
++#if 0
+   FieldCell *cell = [self cellAtX:xPosWithXPoint(pos.x) Y:yPosWithYPoint(pos.y)];
+   NSLog(@"%@",cell);
+   if(cell) {
+@@ -141,7 +190,7 @@ NSInteger yPosWithYPoint(CGFloat yPoint)
+       [self setNeedsDisplay];
+     }
+   }
+-  
++#endif
+ }
+ 
+ - (void)touchesMoved:(NSSet *)touches withEvent:(UIEvent *)event
+@@ -150,6 +199,9 @@ NSInteger yPosWithYPoint(CGFloat yPoint)
+     UITouch *tch = [touches anyObject];
+     CGPoint pos = [tch locationInView:self];
+     self.floatView.center = pos;
++    NSLog(@"%@",NSStringFromCGPoint(pos));
++    [self.activeCharacter.movingTrace addObject:[NSValue valueWithCGPoint:CGPointMake(pos.x, pos.y)]];
++    NSLog (@"        -> %d", self.activeCharacter.movingTrace.count);
+   }
+ }
+ 
+@@ -158,8 +210,30 @@ NSInteger yPosWithYPoint(CGFloat yPoint)
+   if(self.activeCharacter) {
+     UITouch *tch = [touches anyObject];
+     CGPoint pos = [tch locationInView:self];
+-
++#if 0
+     self.originPoint = CGPointMake(xPosWithXPoint(pos.x), yPosWithYPoint(pos.y));
++#else
++    self.originPoint = CGPointMake(pos.x, pos.y);
++#endif
++    if (self.activeCharacter) {
++#if 0
++      [self setCharacter:self.activeCharacter X:pos.x Y:pos.y];
++#endif
++      [self setNeedsDisplay];
++
++      __block __weak StageView *wSelf = self;
++      dispatch_async(dispatch_get_main_queue(), ^{
++        for (NSValue *v in wSelf.activeCharacter.movingTrace) {
++          CGPoint pos = [v CGPointValue];
++          wSelf.activeCharacter.pos = pos;
++          [wSelf setNeedsDisplay];
++        }
++        self.activeCharacter.movingTrace = nil;
++        self.activeCharacter = nil;
++        [self removeFloatView];
++      });
++    }
++#if 0
+     if ([self.activeCharacter canMoveX:xPosWithXPoint(pos.x) Y:yPosWithYPoint(pos.y)]) {
+       if ([self resetCharacter:self.activeCharacter X:xPosWithXPoint(pos.x) Y:yPosWithYPoint(pos.y)]) {
+         [self setNeedsDisplay];
+@@ -181,6 +255,7 @@ NSInteger yPosWithYPoint(CGFloat yPoint)
+     else {
+       [self moveCharacter:self.floatView X:self.activeCharacter.pos.x Y:self.activeCharacter.pos.y];      
+     }
++#endif
+   }
+ }
+ 
+@@ -232,7 +307,9 @@ NSInteger yPosWithYPoint(CGFloat yPoint)
+ - (void)removeFloatView
+ {
+   if(self.activeCharacter) {
++#if 0
+     self.activeCharacter = nil;
++#endif
+     [self.floatView removeFromSuperview];
+     self.floatView = nil;
+   }
+@@ -275,9 +352,24 @@ NSInteger yPosWithYPoint(CGFloat yPoint)
+ 
+ - (void)drawRect:(CGRect)rect
+ {
+-    // Drawing code
++  // Drawing code
+   CGContextRef ctx = UIGraphicsGetCurrentContext();
++
++  NSArray *charas = nil;
++  if([self.delegate respondsToSelector:@selector(allCharas)]) {
++      charas = [self.delegate allCharas];
++  }
+   
++  if (charas) {
++    for (Character *c in charas) {
++      if (c.group) {
++        CGContextDrawImage(ctx, CGRectMake(c.pos.x, c.pos.y, kCellPerSize-2, kCellPerSize-2), [c.image CGImage]);
++      } else {
++        [c.image drawInRect:CGRectMake(c.pos.x, c.pos.y, kCellPerSize-2, kCellPerSize-2)];
++      }
++    }
++  }
++#if 0
+   int x,y;
+   for (x=0; x<kCellRows; x++) {
+     for (y=0; y<kCellCols; y++) {
+@@ -291,7 +383,7 @@ NSInteger yPosWithYPoint(CGFloat yPoint)
+       }
+     }
+   }
+-
++  
+   if(self.activeCharacter) {
+     NSArray *area = [self.activeCharacter moveAreaAtMasterPoint:self.originPoint];
+     for (NSValue *v in area) {
+@@ -299,14 +391,17 @@ NSInteger yPosWithYPoint(CGFloat yPoint)
+       [self drawBox:ctx X:pos.x Y:pos.y];
+     }
+   }
++#endif
+ }
+ 
++#if 0
+ - (void)clearAllCell
+ {
+   for (FieldCell *c in self.cells) {
+     c.character = nil;
+   }
+ }
++#endif
+ 
+ - (void)dealloc
+ {
+diff --git a/Fight/ViewController.m b/Fight/ViewController.m
+index f2724d0..59964fb 100644
+--- a/Fight/ViewController.m
++++ b/Fight/ViewController.m
+@@ -8,6 +8,7 @@
+ 
+ #import "ViewController.h"
+ #import "StageView.h"
++#import "FieldCell.h"
+ #import "Character.h"
+ #import "EffectLayer.h"
+ #import "FloatStatusView.h"
+@@ -58,7 +59,9 @@
+ {
+   int i;
+ 
++#if 0
+   [self.stageView clearAllCell];
++#endif
+   
+   NSMutableArray *ary = [NSMutableArray array];
+   for (i=0; i<10; i++) {
+@@ -69,8 +72,8 @@
+   for (i=0; i<5;i++) {
+     ((Character *)self.charas[i]).group = 0;
+     ((Character *)self.charas[i+5]).group = 1;
+-    [self.stageView setCharacter:self.charas[i] X:i+1 Y:9];
+-    [self.stageView setCharacter:self.charas[i+5] X:i+1 Y:0];
++    [self.stageView setCharacter:self.charas[i] X:[FieldCell xPositionFromCellX:i+1] Y:[FieldCell yPositionFromCellY:9]];
++    [self.stageView setCharacter:self.charas[i+5] X:[FieldCell xPositionFromCellX:i+1] Y:[FieldCell yPositionFromCellY:0]];
+   }
+   [self.stageView setNeedsDisplay];
+ }
+@@ -93,8 +96,8 @@
+   for (i=0; i<5;i++) {
+     ((Character *)self.charas[i]).group = 0;
+     ((Character *)self.charas[i+5]).group = 1;
+-    [self.stageView setCharacter:self.charas[i] X:i+1 Y:9];
+-    [self.stageView setCharacter:self.charas[i+5] X:i+1 Y:0];
++    [self.stageView setCharacter:self.charas[i] X:[FieldCell xPositionFromCellX:i+1] Y:[FieldCell yPositionFromCellY:9]];
++    [self.stageView setCharacter:self.charas[i+5] X:[FieldCell xPositionFromCellX:i+1] Y:[FieldCell yPositionFromCellY:0]];
+   }
+   
+   self.stageView.effectLayer = self.efLayer;
+@@ -109,4 +112,9 @@
+   // Dispose of any resources that can be recreated.
+ }
+ 
++- (NSArray *)allCharas
++{
++  return self.charas;
++}
++
+ @end

@@ -1,0 +1,182 @@
+//
+//  Character.m
+//  Fight
+//
+//  Created by Takashi MORIZANE on 2013/05/24.
+//  Copyright (c) 2013年 PAVCMMS. All rights reserved.
+//
+
+#import <QuartzCore/QuartzCore.h>
+
+#import "Character.h"
+
+@implementation Character
+
+- (id)init
+{
+  self = [super init];
+  if(self) {
+    _speed = random()%90 + 10;
+    _moveArea = @[@(random()%5+1),@(random()%3+1),@(random()%5+1),@(random()%3+1),@(random()%5+1),@(random()%3+1),@(random()%5+1),@(random()%3+1)];
+    _maxHP = random() %50 + 50;
+    _HP = _maxHP;
+    _AP = random() %50 + 30;
+    _DP = random() %25 + 1;
+    _movingTrace = [NSMutableArray array];
+    _image = [UIImage imageNamed:[NSString stringWithFormat:@"images-%ld.png",random()%12]];
+    _movingImage = [[UIImageView alloc] initWithImage:_image];
+    _movingImage.frame = CGRectMake(0, 0, kCharaPerSize, kCharaPerSize);
+  }
+  return self;
+}
+
+- (NSArray *)moveAreaAtMasterPoint:(CGPoint)pos
+{
+  NSMutableArray *ary = [NSMutableArray array];
+  CGFloat x,y;
+  int i;
+
+  x = pos.x;
+  y = pos.y;
+
+  [ary addObject:[NSValue valueWithCGPoint:CGPointMake(x, y)]];
+  
+  int n = [self.moveArea[0] integerValue];
+  x = pos.x;
+  y = pos.y;
+  for (i=1; i<n; i++) {
+    [ary addObject:[NSValue valueWithCGPoint:CGPointMake(x, y-i)]];
+  }
+
+  n = [self.moveArea[1] integerValue];
+  x = pos.x;
+  y = pos.y;
+  for (i=1; i<n; i++) {
+    [ary addObject:[NSValue valueWithCGPoint:CGPointMake(x+i, y-i)]];
+  }
+
+  n = [self.moveArea[2] integerValue];
+  x = pos.x;
+  y = pos.y;
+  for (i=1; i<n; i++) {
+    [ary addObject:[NSValue valueWithCGPoint:CGPointMake(x+i, y)]];
+  }
+
+  n = [self.moveArea[3] integerValue];
+  x = pos.x;
+  y = pos.y;
+  for (i=1; i<n; i++) {
+    [ary addObject:[NSValue valueWithCGPoint:CGPointMake(x+i, y+i)]];
+  }
+
+  n = [self.moveArea[4] integerValue];
+  x = pos.x;
+  y = pos.y;
+  for (i=1; i<n; i++) {
+    [ary addObject:[NSValue valueWithCGPoint:CGPointMake(x, y+i)]];
+  }
+  
+  n = [self.moveArea[5] integerValue];
+  x = pos.x;
+  y = pos.y;
+  for (i=1; i<n; i++) {
+    [ary addObject:[NSValue valueWithCGPoint:CGPointMake(x-i, y+i)]];
+  }
+  
+  n = [self.moveArea[6] integerValue];
+  x = pos.x;
+  y = pos.y;
+  for (i=1; i<n; i++) {
+    [ary addObject:[NSValue valueWithCGPoint:CGPointMake(x-i, y)]];
+  }
+  
+  n = [self.moveArea[7] integerValue];
+  x = pos.x;
+  y = pos.y;
+  for (i=1; i<n; i++) {
+    [ary addObject:[NSValue valueWithCGPoint:CGPointMake(x-i, y-i)]];
+  }
+
+
+  return ary;
+}
+
+float calcDistance (CGPoint from, CGPoint to)
+{
+  NSLog (@"%@ -> %@", NSStringFromCGPoint(from), NSStringFromCGPoint(to));
+  float dx = from.x - to.x;
+  float dy = from.y - to.y;
+  return sqrt(dx*dx + dy*dy);
+}
+
+
+- (BOOL)canMoveChara
+{
+  float movingDistance = 0;
+  BOOL flag = NO;
+  CGPoint from, to;
+  for (NSValue *v in self.movingTrace) {
+    if (flag) {
+      from = to;
+    }
+    to = [v CGPointValue];
+    if (flag) {
+      movingDistance += calcDistance(from, to);
+    }
+    else {
+      flag = YES;
+    }
+    if (movingDistance > self.distance) {
+      return NO;
+    }
+  }
+  return YES;
+}
+
+- (void)animationChar:(void(^)(void))block
+{
+  // CAKeyframeAnimationオブジェクトを生成
+  CAKeyframeAnimation *animation;
+  animation = [CAKeyframeAnimation animationWithKeyPath:@"position"];
+  animation.fillMode = kCAFillModeForwards;
+  animation.removedOnCompletion = NO;
+  animation.duration = 1.0;
+  animation.delegate = self;
+  self.didFinishedAnimation = block;
+  
+  // 放物線のパスを生成
+  CGMutablePathRef curvedPath = CGPathCreateMutable();
+  int i = 0;
+  for (NSValue *v in self.movingTrace) {
+    CGPoint pos = [v CGPointValue];
+    if (i == 0) {
+      CGPathMoveToPoint(curvedPath, NULL, pos.x, pos.y);
+    }
+    else{
+      CGPathAddLineToPoint(curvedPath, NULL, pos.x, pos.y);
+    }
+    i++;
+  }
+  
+  // パスをCAKeyframeAnimationオブジェクトにセット
+  animation.path = curvedPath;
+  
+  // パスを解放
+  CGPathRelease(curvedPath);
+  
+  // レイヤーにアニメーションを追加
+  [self.movingImage.layer addAnimation:animation forKey:nil];
+}
+
+#pragma mark - CAKeyframeAnimation delegate
+
+- (void)animationDidStop:(CAAnimation *)anim finished:(BOOL)flag
+{
+  self.pos = [[self.movingTrace lastObject] CGPointValue];
+  [self.movingTrace removeAllObjects];
+  [self.movingImage removeFromSuperview];
+  self.didFinishedAnimation();
+  self.didFinishedAnimation = nil;
+}
+
+@end

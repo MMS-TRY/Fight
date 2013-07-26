@@ -1,0 +1,81 @@
+***************
+*** 124,149 ****
+    if(self.activeCharacter) {
+      UITouch *tch = [touches anyObject];
+      CGPoint pos = [tch locationInView:self];
+-     self.floatView.center = pos;
+      [self.activeCharacter.movingTrace addObject:[NSValue valueWithCGPoint:CGPointMake(pos.x, pos.y)]];
+    }
+  }
+  
+  - (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event
+  {
+    if(self.activeCharacter) {
+      UITouch *tch = [touches anyObject];
+      CGPoint pos = [tch locationInView:self];
+-     self.originPoint = CGPointMake(pos.x, pos.y);
+-     if (self.activeCharacter) {
+-       [self addSubview:self.activeCharacter.movingImage];
+-       __block __weak StageView *wSelf = self;
+-       [self.activeCharacter animationChar:^{
+-         [wSelf setNeedsDisplay];
+-         [wSelf removeFloatView];
+-       }];
+-       self.activeCharacter = nil;
+      }
+  #if 0
+      if ([self.activeCharacter canMoveX:xPosWithXPoint(pos.x) Y:yPosWithYPoint(pos.y)]) {
+        if ([self resetCharacter:self.activeCharacter X:xPosWithXPoint(pos.x) Y:yPosWithYPoint(pos.y)]) {
+--- 131,182 ----
+    if(self.activeCharacter) {
+      UITouch *tch = [touches anyObject];
+      CGPoint pos = [tch locationInView:self];
++     self.activeCharacter.movingImage.center = pos;
++     NSLog(@" -> %@", NSStringFromCGPoint(pos));
+      [self.activeCharacter.movingTrace addObject:[NSValue valueWithCGPoint:CGPointMake(pos.x, pos.y)]];
+    }
+  }
+  
++ - (void)moveAllCharacter
++ {
++   NSArray *charas = nil;
++   if ([self.delegate respondsToSelector:@selector(allCharas)]) {
++     charas = [self.delegate allCharas];
++   }
++ 
++   for (Character *c in charas) {
++     if (c.setMoving == NO) {
++       return;
++     }
++   }
++   
++   for (Character *c in charas) {
++     [self addSubview:c.movingImage];
++     __block __weak StageView *wSelf = self;
++     [c animationChar:^{
++       [wSelf setNeedsDisplay];
++     }];
++   }
++ }
++ 
+  - (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event
+  {
+    if(self.activeCharacter) {
+      UITouch *tch = [touches anyObject];
+      CGPoint pos = [tch locationInView:self];
++     [self.activeCharacter.movingTrace addObject:[NSValue valueWithCGPoint:CGPointMake(pos.x, pos.y)]];
++     if ([self.activeCharacter canMoveChara]) {
++       self.activeCharacter.setMoving = YES;
++     }
++     else {
++       [self.activeCharacter.movingTrace removeAllObjects];
++       [self moveCharacter:self.activeCharacter X:self.activeCharacter.pos.x Y:self.activeCharacter.pos.y];
+      }
++     [self.movingArea removeFromSuperview];
++     self.movingArea = nil;
++   }
++   self.activeCharacter = nil;
++   [self moveAllCharacter];
+  #if 0
+      if ([self.activeCharacter canMoveX:xPosWithXPoint(pos.x) Y:yPosWithYPoint(pos.y)]) {
+        if ([self resetCharacter:self.activeCharacter X:xPosWithXPoint(pos.x) Y:yPosWithYPoint(pos.y)]) {

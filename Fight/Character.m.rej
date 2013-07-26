@@ -1,0 +1,60 @@
+***************
+*** 101,118 ****
+    return ary;
+  }
+  
+- - (BOOL)canMoveToX:(NSInteger)x Y:(NSInteger)y
+  {
+-   NSArray *area = [self moveAreaAtMasterPoint:self.pos];
+-   for (NSValue *v in area) {
+-     CGPoint pos = [v CGPointValue];
+-     if (CGPointEqualToPoint(pos, CGPointMake(x, y))) {
+-       return YES;
+      }
+    }
+-   return NO;
+  }
+  
+  - (void)animationChar:(void(^)(void))block
+  {
+    // CAKeyframeAnimationオブジェクトを生成
+--- 104,142 ----
+    return ary;
+  }
+  
++ float calcDistance (CGPoint from, CGPoint to)
+  {
++   NSLog (@"%@ -> %@", NSStringFromCGPoint(from), NSStringFromCGPoint(to));
++   float dx = from.x - to.x;
++   float dy = from.y - to.y;
++   return sqrt(dx*dx + dy*dy);
++ }
++ 
++ 
++ - (BOOL)canMoveChara
++ {
++   float movingDistance = 0;
++   BOOL flag = NO;
++   CGPoint from, to;
++   for (NSValue *v in self.movingTrace) {
++     if (flag) {
++       from = to;
++     }
++     to = [v CGPointValue];
++     if (flag) {
++       movingDistance += calcDistance(from, to);
++     }
++     else {
++       flag = YES;
++     }
++     if (movingDistance > self.distance) {
++       return NO;
+      }
+    }
++   return YES;
+  }
+  
++ 
+  - (void)animationChar:(void(^)(void))block
+  {
+    // CAKeyframeAnimationオブジェクトを生成
